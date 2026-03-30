@@ -1,0 +1,1100 @@
+---
+title: "AFDM vs Salinity GLMM - Clean, Publication-Ready"
+output: html_notebook
+---
+
+## Data Analysis File for Organic Matter manuscript by Tabor et al.
+
+# Modeling the organic matter - SC relationships
+
+1.  Load libraries
+
+```{r}
+library(tidyverse)
+library(lme4)
+library(lmerTest)
+library(emmeans)
+```
+
+2.  Read data
+
+```{r}
+setwd("~/Downloads/Updated code + summary sheets")
+
+df <- read.csv("SALTY_C_AFDM_YEAR_1_ALL.csv", check.names=FALSE) %>%
+  mutate(
+    Site  = factor(Site),
+    OM    = factor(OM),  # e.g., CBOM, FBOM, Periphyton
+    month = factor(Season, levels=c("February","May","August","October")),
+    SC    = as.numeric(SC),
+    AFDM  = as.numeric(AFDM)
+  )
+```
+
+3.  Plot aesthetics
+
+```{r}
+OM_colors <- c("CBOM"="#E69F00", "FBOM"="#0072B2", "Periphyton"="#228B22")
+OM_shapes <- c("CBOM"=16, "FBOM"=17, "Periphyton"=15)
+
+month_labels <- c(
+  "February" = "February (Winter 2024)",
+  "May"      = "May (Spring 2024)",
+  "August"   = "August (Summer 2024)",
+  "October"  = "October (Autumn 2023)"
+)
+
+SC_seq <- seq(min(df$SC, na.rm=TRUE), max(df$SC, na.rm=TRUE), length.out=100)
+```
+
+4.  Fit full model
+
+```{r}
+mod_AFDM <- lmer(AFDM ~ SC * month * OM + (1 | Site), data=df)
+```
+
+5.  Extract all SC slopes (table)
+
+```{r}
+AFDM_SC_slopes_all <- emtrends(mod_AFDM, ~ month | OM, var="SC") %>%
+  summary(infer=TRUE) %>%
+  as.data.frame() %>%
+  mutate(
+    t_value = SC.trend / SE,
+    p_value = 2 * pt(-abs(t_value), df),
+    Significance = case_when(
+      p_value < 0.001 ~ "***",
+      p_value < 0.01  ~ "**",
+      p_value < 0.05  ~ "*",
+      TRUE            ~ "ns"
+    ),
+    SC_slope  = round(SC.trend, 2),
+    Std_Error = round(SE, 2),
+    t_value   = round(t_value, 2),
+    p_value   = signif(p_value, 3),
+    lower.CL  = round(lower.CL, 2),
+    upper.CL  = round(upper.CL, 2)
+  ) %>%
+  select(OM, month, SC_slope, Std_Error, df, t_value, p_value, lower.CL, upper.CL, Significance)
+
+# Print full slopes table
+print("=== AFDM ~ SC Slopes by OM and Month ===")
+print(AFDM_SC_slopes_all)
+
+# Save table for manuscript
+write.csv(AFDM_SC_slopes_all, "~/Downloads/Updated code + summary sheets/AFDM_SC_slopes_by_OM_and_Month.csv", row.names=FALSE)
+```
+
+6.  Extract only significant slopes for plotting
+
+```{r}
+AFDM_SC_slopes_sig <- AFDM_SC_slopes_all %>% filter(Significance != "ns")
+
+pred_sig <- emmeans(mod_AFDM, ~ SC | month * OM, at=list(SC=SC_seq), cov.reduce=FALSE) %>%
+  as.data.frame() %>%
+  semi_join(AFDM_SC_slopes_sig, by=c("month","OM"))
+```
+
+7.  Plot significant slopes
+
+```{r}
+p_AFDM_sig <- ggplot(df, aes(SC, AFDM, color=OM, shape=OM)) +
+  geom_jitter(width=0.1, size=3, alpha=0.7) +
+  geom_ribbon(data=pred_sig,
+              aes(x=SC, ymin=lower.CL, ymax=upper.CL, group=interaction(month,OM)),
+              inherit.aes=FALSE, fill="grey70", alpha=0.3) +
+  geom_line(data=pred_sig,
+            aes(x=SC, y=emmean, group=interaction(month,OM)),
+            inherit.aes=FALSE, color="black", size=1.2) +
+  facet_grid(OM ~ month, scales="free_y", labeller=labeller(month=month_labels)) +
+  scale_color_manual(values=OM_colors) +
+  scale_shape_manual(values=OM_shapes) +
+  theme_bw(base_size=16) +
+  theme(strip.background=element_blank(),
+        strip.text=element_text(size=14, face="bold")) +
+  labs(x="Specific Conductivity (µS/m)", y="AFDM (g/m²)")
+
+# Print figure
+print(p_AFDM_sig)
+```
+
+# Chl-a - AC relationsihps (periphyton only)
+
+1.  Read and clean data
+
+```{r}
+
+df <- read.csv("~/Downloads/Updated code + summary sheets/SALTY_C_CHLA_ROCKS.csv", check.names=FALSE) %>%
+  mutate(
+    Site  = factor(Site),
+    month = factor(Season, levels=c("February","May","August","October")),
+    SC    = as.numeric(SC),
+    CHLA  = as.numeric(CHLA)
+  )
+```
+
+2.  Prediction sequence
+
+```{r}
+SC_seq <- seq(min(df$SC, na.rm=TRUE), max(df$SC, na.rm=TRUE), length.out=100)
+```
+
+3.  Fit GLMM
+
+```{r}
+mod_CHLA <- lmer(CHLA ~ SC * month + (1 | Site), data=df)
+```
+
+4.  Extract SC slopes from model
+
+```{r}
+CHLA_SC_slopes_all <- emtrends(mod_CHLA, ~ month, var="SC") %>%
+  summary(infer=TRUE) %>%
+  as.data.frame() %>%
+  mutate(
+    SC_slope  = signif(SC.trend, 3),
+    Std_Error = signif(SE, 3),
+    t_value   = signif(t.ratio, 3),
+    p_value   = signif(p.value, 3),
+    lower.CL  = signif(lower.CL, 3),
+    upper.CL  = signif(upper.CL, 3),
+    Significance = case_when(
+      p_value < 0.001 ~ "***",
+      p_value < 0.01  ~ "**",
+      p_value < 0.05  ~ "*",
+      TRUE            ~ "ns"
+    )
+  ) %>%
+  select(month, SC_slope, Std_Error, df, t_value, p_value, lower.CL, upper.CL, Significance)
+
+# Print full slopes table
+print("=== CHLA ~ SC Slopes by Month ===")
+print(CHLA_SC_slopes_all)
+
+# Save table for manuscript
+write.csv(CHLA_SC_slopes_all, "~/Downloads/Updated code + summary sheets/CHLA_SC_slopes_by_month.csv", row.names=FALSE)
+```
+
+5.  Extract only significant slopes for plotting
+
+```{r}
+CHLA_SC_slopes_sig <- CHLA_SC_slopes_all %>% filter(Significance != "ns") %>% select(month)
+
+pred_sig <- emmeans(mod_CHLA, ~ SC | month, at=list(SC=SC_seq), cov.reduce=FALSE) %>%
+  as.data.frame() %>%
+  semi_join(CHLA_SC_slopes_sig, by="month")
+```
+
+6.  Plot significant slopes
+
+```{r}
+algae_color <- "#228B22"  # Periphyton
+
+month_labels <- c(
+  "February" = "February (Winter 2024)",
+  "May"      = "May (Spring 2024)",
+  "August"   = "August (Summer 2024)",
+  "October"  = "October (Autumn 2024)"
+)
+
+p_CHLA_sig <- ggplot(df, aes(x=SC, y=CHLA)) +
+  geom_jitter(color=algae_color, size=3, width=0.1, alpha=0.7) +
+  geom_ribbon(data=pred_sig,
+              aes(x=SC, ymin=lower.CL, ymax=upper.CL),
+              fill=algae_color, alpha=0.3, inherit.aes=FALSE) +
+  geom_line(data=pred_sig, aes(x=SC, y=emmean),
+            color=algae_color, size=1.2, inherit.aes=FALSE) +
+  facet_wrap(~ month, scales="fixed", labeller=labeller(month=month_labels)) +
+  theme_bw(base_size=16) +
+  theme(
+    strip.background = element_blank(),
+    strip.text = element_text(size=14, face="bold")
+  ) +
+  labs(
+    x = "Specific Conductivity (µS/m)",
+    y = expression("Periphyton chlorophyll " * italic(a) * " concentration (g/"*m^2*")")
+  )
+
+# Print figure
+print(p_CHLA_sig)
+```
+
+# Analysising the isotopes
+
+1.  Read the data
+
+```{r}
+df <- read.csv("~/Downloads/Updated code + summary sheets/SALTY_C_SI_YEAR_1_ALL.csv", check.names = FALSE)
+```
+
+2.  Data preparation
+
+```{r}
+df <- df %>%
+  mutate(
+    Season = factor(Season, levels = c("February", "May", "August", "October")),
+    Site   = factor(Site),
+    OM     = factor(OM),
+    SC     = as.numeric(SC),
+    d13C   = as.numeric(d13C),
+    d15N   = as.numeric(d15N)
+  )
+```
+
+3.  Fit full interaction models
+
+```{r}
+mod_d13C <- lmer(d13C ~ SC * Season * OM + (1 | Site), data = df)
+mod_d15N <- lmer(d15N ~ SC * Season * OM + (1 | Site), data = df)
+```
+
+4.  Function to extract SC slopes for each Season × OM
+
+```{r}
+extract_slopes_all <- function(model, isotope_name) {
+  emtrends(model, ~ Season | OM, var = "SC") %>%
+    summary(infer = TRUE) %>%
+    as.data.frame() %>%
+    mutate(
+      t_value = SC.trend / SE,
+      p_value = 2 * pt(-abs(t_value), df),
+      Significance = case_when(
+        p_value < 0.001 ~ "***",
+        p_value < 0.01  ~ "**",
+        p_value < 0.05  ~ "*",
+        TRUE            ~ "ns"
+      ),
+      Isotope   = isotope_name,
+      SC_slope  = signif(SC.trend, 3),
+      Std_Error = signif(SE, 3),
+      t_value   = signif(t_value, 3),
+      p_value   = signif(p_value, 3)
+    ) %>%
+    select(Isotope, OM, Season, SC_slope, Std_Error, df, t_value, p_value, Significance)
+}
+```
+
+5.  Extract slopes for δ13C and δ15N
+
+```{r}
+d13C_SC_slopes <- extract_slopes_all(mod_d13C, "d13C")
+d15N_SC_slopes <- extract_slopes_all(mod_d15N, "d15N")
+```
+
+6.  Print tables separately
+
+```{r}
+cat("\n=== δ13C SC Slopes (All) ===\n")
+print(d13C_SC_slopes)
+
+cat("\n=== δ15N SC Slopes (All) ===\n")
+print(d15N_SC_slopes)
+```
+
+7.  Salinity prediction sequence
+
+```{r}
+SC_seq <- seq(min(df$SC, na.rm = TRUE), max(df$SC, na.rm = TRUE), length.out = 100)
+```
+
+8.  Predicted values by Season × OM
+
+```{r}
+emm_d13C <- emmeans(mod_d13C, ~ SC | Season + OM, at = list(SC = SC_seq))
+emm_d15N <- emmeans(mod_d15N, ~ SC | Season + OM, at = list(SC = SC_seq))
+
+pred_fixed <- bind_rows(
+  as.data.frame(emm_d13C) %>% mutate(Isotope = "d13C"),
+  as.data.frame(emm_d15N) %>% mutate(Isotope = "d15N")
+)
+
+# Keep only significant Season × OM slopes for plotting
+pred_fixed_sig <- pred_fixed %>%
+  semi_join(bind_rows(
+    d13C_SC_slopes %>% filter(Significance != "ns"),
+    d15N_SC_slopes %>% filter(Significance != "ns")
+  ), by = c("Season", "OM", "Isotope"))
+```
+
+9.  Pivot raw data to long format
+
+```{r}
+df_long <- df %>%
+  pivot_longer(cols = c(d13C, d15N), names_to = "Isotope", values_to = "Value")
+```
+
+10. Plot aesthetics
+
+```{r}
+OM_shapes <- c("CBOM" = 16, "FBOM" = 17, "Periphyton" = 15)
+OM_colors <- c("CBOM" = "#E69F00", "FBOM" = "#0072B2", "Periphyton" = "#228B22")
+month_labels <- c(
+  "February" = "February (Winter 2024)",
+  "May"      = "May (Spring 2024)",
+  "August"   = "August (Summer 2024)",
+  "October"  = "October (Autumn 2023)"
+)
+```
+
+11. δ13C Plot
+
+```{r}
+p_d13C <- ggplot(df_long %>% filter(Isotope == "d13C"),
+                 aes(x = SC, y = Value, color = OM, shape = OM)) +
+  geom_jitter(size = 3, width = 0.1, alpha = 0.7) +
+  geom_ribbon(data = pred_fixed_sig %>% filter(Isotope == "d13C"),
+              aes(x = SC, ymin = lower.CL, ymax = upper.CL,
+                  fill = OM, group = interaction(Season, OM)),
+              alpha = 0.3, inherit.aes = FALSE) +
+  geom_line(data = pred_fixed_sig %>% filter(Isotope == "d13C"),
+            aes(x = SC, y = emmean, color = OM, group = interaction(Season, OM)),
+            size = 1.2, inherit.aes = FALSE) +
+  scale_color_manual(values = OM_colors, guide = "legend") +
+  scale_fill_manual(values = OM_colors, guide = "none") +
+  scale_shape_manual(values = OM_shapes) +
+  facet_wrap(~ Season, scales = "free_y", labeller = labeller(Season = month_labels)) +
+  theme_bw(base_size = 16) +
+  labs(x = "Specific Conductivity (µS/m)",
+       y = expression(delta^{13} * "C"),
+) +
+  theme(strip.background = element_blank(),
+        strip.text = element_text(face = "bold"))
+
+print(p_d13C)
+```
+
+12. δ15N Plot
+
+```{r}
+p_d15N <- ggplot(df_long %>% filter(Isotope == "d15N"),
+                 aes(x = SC, y = Value, color = OM, shape = OM)) +
+  geom_jitter(size = 3, width = 0.1, alpha = 0.7) +
+  geom_ribbon(data = pred_fixed_sig %>% filter(Isotope == "d15N"),
+              aes(x = SC, ymin = lower.CL, ymax = upper.CL,
+                  fill = OM, group = interaction(Season, OM)),
+              alpha = 0.3, inherit.aes = FALSE) +
+  geom_line(data = pred_fixed_sig %>% filter(Isotope == "d15N"),
+            aes(x = SC, y = emmean, color = OM, group = interaction(Season, OM)),
+            size = 1.2, inherit.aes = FALSE) +
+  scale_color_manual(values = OM_colors, guide = "legend") +
+  scale_fill_manual(values = OM_colors, guide = "none") +
+  scale_shape_manual(values = OM_shapes) +
+  facet_wrap(~ Season, scales = "free_y", labeller = labeller(Season = month_labels)) +
+  theme_bw(base_size = 16) +
+  labs(x = "Specific Conductivity (µS/m)",
+       y = expression(delta^{15} * "N"),
+) +
+  theme(strip.background = element_blank(),
+        strip.text = element_text(face = "bold"))
+print(p_d15N)
+```
+
+# C:N ratios
+
+1.  Read data
+
+```{r}
+df <- read.csv("~/Downloads/Updated code + summary sheets/SALTY_C_CN_YEAR_1_ALL.csv", check.names = FALSE)
+```
+
+2.  Data preparation
+
+```{r}
+df <- df %>%
+  mutate(
+    Site = factor(Site),
+    month = factor(Season, levels = c("February", "May", "August", "October")),
+    OM = factor(OM),
+    SC = as.numeric(SC),
+    C_N = as.numeric(C_N)
+  )
+```
+
+3.  Fit Full GLMM
+
+```{r}
+mod_CN <- lmer(
+  C_N ~ SC * month * OM + (1 | Site),
+  data = df
+)
+```
+
+4.  Extract SC slopes for each Month × OM
+
+```{r}
+CN_SC_slopes <- emtrends(
+  mod_CN,
+  ~ month | OM,
+  var = "SC"
+) %>%
+  summary(infer = TRUE) %>%
+  as.data.frame() %>%
+  mutate(
+    t_value = SC.trend / SE,
+    p_value = 2 * pt(-abs(t_value), df),
+    Significance = case_when(
+      p_value < 0.001 ~ "***",
+      p_value < 0.01  ~ "**",
+      p_value < 0.05  ~ "*",
+      TRUE            ~ "ns"
+    ),
+    SC_slope = signif(SC.trend, 3),
+    Std_Error = signif(SE, 3),
+    t_value = signif(t_value, 3),
+    p_value = signif(p_value, 3),
+    lower.CL = signif(lower.CL, 3),
+    upper.CL = signif(upper.CL, 3)
+  ) %>%
+  select(OM, month, SC_slope, Std_Error, df, t_value, p_value, lower.CL, upper.CL, Significance)
+```
+
+5.  Print SC slopes table (all)
+
+```{r}
+print("=== C:N ~ SC Slopes by Month × OM (All Slopes) ===")
+print(CN_SC_slopes)
+write.csv(CN_SC_slopes, "~/Downloads/Updated code + summary sheets/CN_SC_slopes_by_month_OM.csv", row.names = FALSE)
+```
+
+6.  Salinity prediction sequence
+
+```{r}
+SC_seq <- seq(
+  min(df$SC, na.rm = TRUE),
+  max(df$SC, na.rm = TRUE),
+  length.out = 100
+)
+```
+
+7.  Predicted values for Month × OM
+
+```{r}
+emm_CN <- emmeans(
+  mod_CN,
+  ~ SC | month + OM,
+  at = list(SC = SC_seq)
+)
+pred_CN <- as.data.frame(emm_CN)
+```
+
+8.  Keep only significant slopes for plotting
+
+```{r}
+sig_CN_slopes <- CN_SC_slopes %>%
+  filter(Significance != "ns") %>%
+  select(OM, month)
+
+pred_CN_sig <- pred_CN %>%
+  semi_join(sig_CN_slopes, by = c("OM", "month"))
+```
+
+9.  Plot settings
+
+```{r}
+OM_shapes <- c("CBOM" = 16, "FBOM" = 17, "Periphyton" = 15)
+OM_colors <- c("CBOM" = "#E69F00",
+               "FBOM" = "#0072B2",
+               "Periphyton" = "#228B22")
+
+month_labels <- c(
+  "February" = "February (Winter 2024)",
+  "May"      = "May (Spring 2024)",
+  "August"   = "August (Summer 2024)",
+  "October"  = "October (Autumn 2024)"
+)
+```
+
+10. Faceted Plot: OM × Month (only significant lines)
+
+```{r}
+p_CN <- ggplot(df, aes(x = SC, y = C_N, color = OM, shape = OM)) +
+  
+  # Raw data points
+  geom_jitter(size = 3, width = 0.1, alpha = 0.7) +
+  
+  # Only significant ribbons
+  geom_ribbon(
+    data = pred_CN_sig,
+    aes(x = SC,
+        ymin = lower.CL,
+        ymax = upper.CL,
+        fill = OM,
+        group = interaction(OM, month)),
+    alpha = 0.3,
+    inherit.aes = FALSE,
+    show.legend = FALSE
+  ) +
+  
+  # Only significant lines
+  geom_line(
+    data = pred_CN_sig,
+    aes(x = SC,
+        y = emmean,
+        color = OM,
+        group = interaction(OM, month)),
+    size = 1.2,
+    inherit.aes = FALSE
+  ) +
+  
+  # Manual scales
+  scale_color_manual(values = OM_colors) +
+  scale_fill_manual(values = OM_colors) +
+  scale_shape_manual(values = OM_shapes) +
+  
+  # Facet grid: OM rows × Month columns
+  facet_grid(
+    OM ~ month,
+    labeller = labeller(month = month_labels),
+    scales = "free_y"
+  ) +
+  
+  # Theme + labels
+  theme_bw(base_size = 16) +
+  labs(
+    x = "Specific Conductivity (µS/m)",
+    y = "C:N"
+  ) +
+  theme(
+    strip.background = element_blank(),
+    strip.text = element_text(size = 14, face = "bold")
+  )
+
+# Print the faceted plot
+print(p_CN)
+```
+
+# δ13C vs δ15N Biplot
+
+1.  Load data
+
+```{r}
+df <- read.csv("~/Downloads/Updated code + summary sheets/SALTY_C_SI_YEAR_1_ALL.csv", check.names = FALSE)
+```
+
+2.  Prepare data
+
+```{r}
+df <- df %>%
+  mutate(
+    Season = factor(Season, levels = c("February", "May", "August", "October")),
+    Site   = factor(Site),
+    OM     = factor(OM),
+    SC     = as.numeric(SC),
+    d13C   = as.numeric(d13C),
+    d15N   = as.numeric(d15N)
+  )
+```
+
+3.  Fit full interaction models
+
+```{r}
+mod_d13C <- lmer(d13C ~ SC * Season * OM + (1 | Site), data = df)
+mod_d15N <- lmer(d15N ~ SC * Season * OM + (1 | Site), data = df)
+```
+
+4.  Extract SC slopes and significance
+
+```{r}
+extract_slopes <- function(model, isotope) {
+  emtrends(model, ~ Season | OM, var = "SC") %>%
+    summary(infer = TRUE) %>%
+    as.data.frame() %>%
+    mutate(
+      t_value = SC.trend / SE,
+      p_value = 2 * pt(-abs(t_value), df),
+      Significance = case_when(
+        p_value < 0.001 ~ "***",
+        p_value < 0.01  ~ "**",
+        p_value < 0.05  ~ "*",
+        TRUE            ~ "ns"
+      ),
+      Isotope = isotope,
+      SC_slope = SC.trend
+    ) %>%
+    select(Isotope, OM, Season, SC_slope, SE, df, t_value, p_value, Significance)
+}
+
+slopes_d13C <- extract_slopes(mod_d13C, "d13C")
+slopes_d15N <- extract_slopes(mod_d15N, "d15N")
+
+# Combine slope tables
+all_slopes <- bind_rows(slopes_d13C, slopes_d15N)
+cat("\n=== SC Slopes for δ13C and δ15N ===\n")
+print(all_slopes)
+```
+
+5.  Salinity sequence for predictions
+
+```{r}
+SC_seq <- seq(min(df$SC, na.rm = TRUE), max(df$SC, na.rm = TRUE), length.out = 100)
+```
+
+6.  Predicted values (only significant slopes)
+
+```{r}
+emm_d13C <- emmeans(mod_d13C, ~ SC | Season + OM, at = list(SC = SC_seq))
+emm_d15N <- emmeans(mod_d15N, ~ SC | Season + OM, at = list(SC = SC_seq))
+
+pred <- bind_rows(
+  as.data.frame(emm_d13C) %>% mutate(Isotope = "d13C"),
+  as.data.frame(emm_d15N) %>% mutate(Isotope = "d15N")
+)
+
+sig_slopes <- bind_rows(
+  slopes_d13C %>% filter(Significance != "ns"),
+  slopes_d15N %>% filter(Significance != "ns")
+)
+
+pred_sig <- pred %>% semi_join(sig_slopes, by = c("Season", "OM", "Isotope"))
+```
+
+7.  Pivot predictions to wide for biplot
+
+```{r}
+pred_wide <- pred_sig %>%
+  pivot_wider(names_from = Isotope, values_from = emmean) 
+```
+
+8.  Plot aesthetics
+
+```{r}
+OM_shapes <- c("CBOM" = 16, "FBOM" = 17, "Periphyton" = 15)
+OM_colors <- c("CBOM" = "#E69F00", "FBOM" = "#0072B2", "Periphyton" = "#228B22")
+month_labels <- c(
+  "February" = "February (Winter 2024)",
+  "May"      = "May (Spring 2024)",
+  "August"   = "August (Summer 2024)",
+  "October"  = "October (Autumn 2024)"
+)
+```
+
+9.  Biplot δ13C vs δ15N with significant slopes
+
+```{r}
+ggplot(df, aes(x = d13C, y = d15N, color = OM, shape = OM)) +
+  geom_point(size = 3, alpha = 0.7) +
+  geom_line(data = pred_wide, aes(x = d13C, y = d15N, group = interaction(OM, Season)),
+            size = 1.2, inherit.aes = FALSE) +
+  geom_vline(xintercept= -28, color = "darkred", linetype= "dashed", size=1) + #can remove this if needed
+  facet_grid(OM ~ Season, labeller = labeller(Season = month_labels)) +
+  scale_color_manual(values = OM_colors) +
+  scale_shape_manual(values = OM_shapes) +
+  theme_bw(base_size = 16) +
+  labs(
+    x = expression(delta^{13}*"C"),
+    y = expression(delta^{15}*"N"),
+    color = "OM",
+    shape = "OM"
+  ) +
+  theme(strip.background = element_blank(),
+        strip.text = element_text(face = "bold"))
+```
+
+# Carbon (C) and Nitrogen (N)
+
+# Fixed-Season GLMM
+
+# SC slopes vary by Month × OM
+
+# All slopes in tables, only significant slopes in figures
+
+1.  Read data
+
+```{r}
+df <- read.csv("~/Downloads/Updated code + summary sheets/SALTY_C_CN_YEAR_1_ALL.csv", check.names = FALSE)
+```
+
+2.  Data preparation
+
+```{r}
+df <- df %>%
+  mutate(
+    Site  = factor(Site),
+    month = factor(Season, levels = c("February", "May", "August", "October")),
+    OM    = factor(OM),
+    SC    = as.numeric(SC),
+    C     = as.numeric(C),
+    N     = as.numeric(N)
+  )
+```
+
+3.  Salinity prediction sequence
+
+```{r}
+SC_seq <- seq(
+  min(df$SC, na.rm = TRUE),
+  max(df$SC, na.rm = TRUE),
+  length.out = 100
+)
+```
+
+4.  Plot aesthetics
+
+```{r}
+OM_shapes <- c("CBOM" = 16, "FBOM" = 17, "Periphyton" = 15)
+OM_colors <- c(
+  "CBOM" = "#E69F00",
+  "FBOM" = "#0072B2",
+  "Periphyton" = "#228B22"
+)
+
+month_labels <- c(
+  "February" = "February (Winter 2024)",
+  "May"      = "May (Spring 2024)",
+  "August"   = "August (Summer 2024)",
+  "October"  = "October (Autumn 2024)"
+)
+```
+
+## CARBON (C)
+
+5.  Fit GLMM
+
+```{r}
+mod_C <- lmer(
+  C ~ SC * month * OM + (1 | Site),
+  data = df
+)
+```
+
+6.  Extract SC slopes (table)
+
+```{r}
+C_SC_slopes <- emtrends(
+  mod_C,
+  ~ month | OM,
+  var = "SC"
+) %>%
+  summary(infer = TRUE) %>%
+  as.data.frame() %>%
+  mutate(
+    t_value = SC.trend / SE,
+    p_value = 2 * pt(-abs(t_value), df),
+    Significance = case_when(
+      p_value < 0.001 ~ "***",
+      p_value < 0.01  ~ "**",
+      p_value < 0.05  ~ "*",
+      TRUE            ~ "ns"
+    )
+  ) %>%
+  select(OM, month, SC.trend, SE, df,
+         t_value, p_value, lower.CL, upper.CL, Significance)
+
+print("=== Carbon (C) ~ SC Slopes by Month × OM ===")
+print(C_SC_slopes)
+write.csv(C_SC_slopes, "~/Downloads/Updated code + summary sheets/C_SC_slopes_by_month_OM.csv", row.names = FALSE)
+```
+
+7.  Predicted values
+
+```{r}
+emm_C <- emmeans(
+  mod_C,
+  ~ SC | month + OM,
+  at = list(SC = SC_seq)
+)
+
+pred_C <- as.data.frame(emm_C)
+```
+
+8.  Keep only significant slopes
+
+```{r}
+sig_C <- C_SC_slopes %>%
+  filter(Significance != "ns") %>%
+  select(OM, month)
+
+pred_C_sig <- pred_C %>%
+  semi_join(sig_C, by = c("OM", "month"))
+```
+
+9.  Plot Carbon
+
+```{r}
+p_C <- ggplot(df, aes(x = SC, y = C, color = OM, shape = OM)) +
+  geom_jitter(size = 3, width = 0.1, alpha = 0.7) +
+  geom_ribbon(
+    data = pred_C_sig,
+    aes(x = SC, ymin = lower.CL, ymax = upper.CL,
+        fill = OM, group = interaction(OM, month)),
+    alpha = 0.3,
+    inherit.aes = FALSE,
+    show.legend = FALSE
+  ) +
+  geom_line(
+    data = pred_C_sig,
+    aes(x = SC, y = emmean,
+        color = OM, group = interaction(OM, month)),
+    size = 1.2,
+    inherit.aes = FALSE
+  ) +
+  scale_color_manual(values = OM_colors) +
+  scale_fill_manual(values = OM_colors) +
+  scale_shape_manual(values = OM_shapes) +
+  facet_grid(
+    OM ~ month,
+    labeller = labeller(month = month_labels),
+    scales = "free_y"
+  ) +
+  theme_bw(base_size = 16) +
+  labs(
+    x = "Specific Conductivity (µS/m)",
+    y = "% Carbon"
+  ) +
+  theme(
+    strip.background = element_blank(),
+    strip.text = element_text(size = 14, face = "bold")
+  )
+
+print(p_C)
+```
+
+# NITROGEN (N)
+
+10. Fit GLMM
+
+```{r}
+mod_N <- lmer(
+  N ~ SC * month * OM + (1 | Site),
+  data = df
+)
+```
+
+11. Extract SC slopes (table)
+
+```{r}
+N_SC_slopes <- emtrends(
+  mod_N,
+  ~ month | OM,
+  var = "SC"
+) %>%
+  summary(infer = TRUE) %>%
+  as.data.frame() %>%
+  mutate(
+    t_value = SC.trend / SE,
+    p_value = 2 * pt(-abs(t_value), df),
+    Significance = case_when(
+      p_value < 0.001 ~ "***",
+      p_value < 0.01  ~ "**",
+      p_value < 0.05  ~ "*",
+      TRUE            ~ "ns"
+    )
+  ) %>%
+  select(OM, month, SC.trend, SE, df,
+         t_value, p_value, lower.CL, upper.CL, Significance)
+
+print("=== Nitrogen (N) ~ SC Slopes by Month × OM ===")
+print(N_SC_slopes)
+write.csv(N_SC_slopes, "~/Downloads/Updated code + summary sheets/N_SC_slopes_by_month_OM.csv", row.names = FALSE)
+```
+
+12. Predicted values
+
+```{r}
+emm_N <- emmeans(
+  mod_N,
+  ~ SC | month + OM,
+  at = list(SC = SC_seq)
+)
+
+pred_N <- as.data.frame(emm_N)
+```
+
+13. Keep only significant slopes
+
+```{r}
+sig_N <- N_SC_slopes %>%
+  filter(Significance != "ns") %>%
+  select(OM, month)
+
+pred_N_sig <- pred_N %>%
+  semi_join(sig_N, by = c("OM", "month"))
+```
+
+14. Plot Nitrogen
+
+```{r}
+p_N <- ggplot(df, aes(x = SC, y = N, color = OM, shape = OM)) +
+  geom_jitter(size = 3, width = 0.1, alpha = 0.7) +
+  geom_ribbon(
+    data = pred_N_sig,
+    aes(x = SC, ymin = lower.CL, ymax = upper.CL,
+        fill = OM, group = interaction(OM, month)),
+    alpha = 0.3,
+    inherit.aes = FALSE,
+    show.legend = FALSE
+  ) +
+  geom_line(
+    data = pred_N_sig,
+    aes(x = SC, y = emmean,
+        color = OM, group = interaction(OM, month)),
+    size = 1.2,
+    inherit.aes = FALSE
+  ) +
+  scale_color_manual(values = OM_colors) +
+  scale_fill_manual(values = OM_colors) +
+  scale_shape_manual(values = OM_shapes) +
+  facet_grid(
+    OM ~ month,
+    labeller = labeller(month = month_labels),
+    scales = "free_y"
+  ) +
+  theme_bw(base_size = 16) +
+  labs(
+    x = "Specific Conductivity (µS/m)",
+    y = "% Nitrogen"
+  ) +
+  theme(
+    strip.background = element_blank(),
+    strip.text = element_text(size = 14, face = "bold")
+  )
+
+print(p_N)
+```
+
+# Summary Statistics for Figures in Manuscript - AA
+
+1.  Helper function
+
+```{r}
+summarise_var <- function(df, group_vars, value_var) {
+  df %>%
+    group_by(across(all_of(group_vars))) %>%
+    summarise(
+      n      = sum(!is.na(.data[[value_var]])),
+      mean   = round(mean(.data[[value_var]], na.rm = TRUE), 3),
+      sd     = round(sd(.data[[value_var]],   na.rm = TRUE), 3),
+      median = round(median(.data[[value_var]], na.rm = TRUE), 3),
+      min    = round(min(.data[[value_var]],  na.rm = TRUE), 3),
+      max    = round(max(.data[[value_var]],  na.rm = TRUE), 3),
+      .groups = "drop"
+    )
+}
+```
+
+2.  Figure 1: AFDM - dataset: SALTY_C_AFDM_YEAR_1_ALL.csv
+
+```{r}
+cat("\n\n══════ AFDM Summary Statistics (Fig 1) ══════\n")
+
+df_afdm <- read.csv("~/Downloads/Updated code + summary sheets/SALTY_C_AFDM_YEAR_1_ALL.csv", check.names = FALSE) %>%
+  mutate(
+    Site  = factor(Site),
+    OM    = factor(OM),
+    month = factor(Season, levels = c("February", "May", "August", "October")),
+    SC    = as.numeric(SC),
+    AFDM  = as.numeric(AFDM)
+  )
+
+afdm_stats <- summarise_var(df_afdm, c("OM", "month"), "AFDM")
+print(afdm_stats)
+write.csv(afdm_stats, "~/Downloads/Updated code + summary sheets/SummaryStats_AFDM_by_OM_Month.csv", row.names = FALSE)
+cat("  → Saved: ~/Downloads/Updated code + summary sheets/SummaryStats_AFDM_by_OM_Month.csv\n")
+```
+
+3.  Figure 2: CHL-A - dataset: SALTY_C_CHLA_ROCKS.csv
+
+```{r}
+cat("\n\n══════ Chlorophyll-a Summary Statistics (Fig 2) ══════\n")
+
+df_chla <- read.csv("~/Downloads/Updated code + summary sheets/SALTY_C_CHLA_ROCKS.csv", check.names = FALSE) %>%
+  mutate(
+    Site  = factor(Site),
+    month = factor(Season, levels = c("February", "May", "August", "October")),
+    SC    = as.numeric(SC),
+    CHLA  = as.numeric(CHLA)
+  )
+
+chla_stats <- summarise_var(df_chla, "month", "CHLA")
+print(chla_stats)
+write.csv(chla_stats, "~/Downloads/Updated code + summary sheets/SummaryStats_CHLA_by_Month.csv", row.names = FALSE)
+cat("  → Saved: ~/Downloads/Updated code + summary sheets/SummaryStats_CHLA_by_Month.csv\n")
+```
+
+4.  Figure 3-4: Stable Isotopes - dataset: SALTY_C_SI_YEAR_1_ALL.csv
+
+```{r}
+cat("\n\n══════ δ13C Summary Statistics (Fig 3) ══════\n")
+
+df_si <- read.csv("~/Downloads/Updated code + summary sheets/SALTY_C_SI_YEAR_1_ALL.csv", check.names = FALSE) %>%
+  mutate(
+    Season = factor(Season, levels = c("February", "May", "August", "October")),
+    Site   = factor(Site),
+    OM     = factor(OM),
+    SC     = as.numeric(SC),
+    d13C   = as.numeric(d13C),
+    d15N   = as.numeric(d15N)
+  )
+
+d13C_stats <- summarise_var(df_si, c("OM", "Season"), "d13C")
+print(d13C_stats)
+write.csv(d13C_stats, "~/Downloads/Updated code + summary sheets/SummaryStats_d13C_by_OM_Season.csv", row.names = FALSE)
+cat("  → Saved: ~/Downloads/Updated code + summary sheets/SummaryStats_d13C_by_OM_Season.csv\n")
+
+cat("\n\n══════ δ15N Summary Statistics (Fig 4) ══════\n")
+
+d15N_stats <- summarise_var(df_si, c("OM", "Season"), "d15N")
+print(d15N_stats)
+write.csv(d15N_stats, "~/Downloads/Updated code + summary sheets/SummaryStats_d15N_by_OM_Season.csv", row.names = FALSE)
+cat("  → Saved: ~/Downloads/Updated code + summary sheets/SummaryStats_d15N_by_OM_Season.csv\n")
+
+```
+
+5.  5-7 C:N, %C, %N - dataset: SALTY_C_CN_YEAR_1_ALL.csv
+
+```{r}
+cat("\n\n══════ C:N Summary Statistics (Fig 6 – Erin flagged) ══════\n")
+
+df_cn <- read.csv("~/Downloads/Updated code + summary sheets/SALTY_C_CN_YEAR_1_ALL.csv", check.names = FALSE) %>%
+  mutate(
+    Site  = factor(Site),
+    month = factor(Season, levels = c("February", "May", "August", "October")),
+    OM    = factor(OM),
+    SC    = as.numeric(SC),
+    C_N   = as.numeric(C_N),
+    C     = as.numeric(C),
+    N     = as.numeric(N)
+  )
+
+cn_stats <- summarise_var(df_cn, c("OM", "month"), "C_N")
+print(cn_stats)
+write.csv(cn_stats, "~/Downloads/Updated code + summary sheets/SummaryStats_CN_by_OM_Month.csv", row.names = FALSE)
+cat("  → Saved: ~/Downloads/Updated code + summary sheets/SummaryStats_CN_by_OM_Month.csv\n")
+cat("  NOTE for Erin's comment: 'lower.CL / upper.CL' ribbons in Fig 6 are\n")
+cat("  95% confidence intervals from the GLMM (emmeans), NOT raw ranges.\n")
+cat("  Median and range are now available in the CSV above.\n")
+
+cat("\n\n══════ %~/Downloads/Updated code + summary sheets/Carbon Summary Statistics (Fig 5) ══════\n")
+
+c_stats <- summarise_var(df_cn, c("OM", "month"), "C")
+print(c_stats)
+write.csv(c_stats, "~/Downloads/Updated code + summary sheets/SummaryStats_C_by_OM_Month.csv", row.names = FALSE)
+cat("  → Saved: ~/Downloads/Updated code + summary sheets/SummaryStats_C_by_OM_Month.csv\n")
+
+cat("\n\n══════ %Nitrogen Summary Statistics (Fig 7) ══════\n")
+
+n_stats <- summarise_var(df_cn, c("OM", "month"), "N")
+print(n_stats)
+write.csv(n_stats, "~/Downloads/Updated code + summary sheets/SummaryStats_N_by_OM_Month.csv", row.names = FALSE)
+cat("  → Saved: ~/Downloads/Updated code + summary sheets/SummaryStats_N_by_OM_Month.csv\n")
+```
+
+6.  Combine all tables into one master summary
+
+```{r}
+all_stats <- bind_rows(
+  afdm_stats %>% mutate(Figure = "Fig_AFDM", Variable = "AFDM"),
+  chla_stats %>% mutate(Figure = "Fig_CHLA", Variable = "CHLA", OM = "Periphyton") %>%
+    rename(month = month),
+  d13C_stats %>% mutate(Figure = "Fig_d13C", Variable = "d13C") %>% rename(month = Season),
+  d15N_stats %>% mutate(Figure = "Fig_d15N", Variable = "d15N") %>% rename(month = Season),
+  cn_stats   %>% mutate(Figure = "Fig6_CN",  Variable = "C:N"),
+  c_stats    %>% mutate(Figure = "Fig_C",    Variable = "C_pct"),
+  n_stats    %>% mutate(Figure = "Fig_N",    Variable = "N_pct")
+) %>%
+  select(Figure, Variable, everything())
+
+write.csv(all_stats, "~/Downloads/Updated code + summary sheets/SummaryStats_ALL_FIGURES.csv", row.names = FALSE)
+cat("\n\n══════ Master file saved: ~/Downloads/Updated code + summary sheets/SummaryStats_ALL_FIGURES.csv ══════\n")
+cat("Done.\n")
+```
