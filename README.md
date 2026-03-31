@@ -1,27 +1,80 @@
 
-Organic Matter Standing Stock Analysis
+# Organic Matter Standing Stock Analysis
+
 Data analysis for organic matter (coarse and fine organic matter + periphyton scrubbed from rocks) ash-free dry mass, chlorophyll-a, natural abundance of carbon and nitrogen stable isotope values, and C:N content ratio.
-Authors
-Lisa M. Tabor, Amaryllis K. Adey, Terri Brown, Erin R. Hotchkiss, Daniel McLaughlin, Caleigh Meehan, Rachel Reid, Stephen Schoelholtz, Kelley Sinning, Megan E. Underwood, Carl Zipper, Sally A. Entrekin
-Virginia Polytechnic Institute and State University · University of Virginia's College at Wise
-Research Question
+
+## 📊 What This Analysis Does
+
+This repository runs linear mixed-effects models with fixed season for the following response variables:
+
+- Ash-free dry mass of CBOM, FBOM, and periphyton (g/m²)
+- Chlorophyll-a concentration of periphyton scrubbed from rocks (g/m²)
+- Natural abundance of carbon stable isotopes — δ¹³C (‰)
+- Natural abundance of nitrogen stable isotopes — δ¹⁵N (‰)
+- Carbon to nitrogen content ratio — C:N
+- Summary statistics for all above variables plus % carbon and % nitrogen
+
+## 🚀 Quick Start
+
+**Prerequisites**
+
+Install required R packages:
+
+`install.packages(c("lme4", "lmerTest", "dplyr", "ggplot2"))`
+
+**Running the Analysis**
+
+1. Clone or download this repository
+2. Open the R project file in RStudio
+3. Update file paths to point to your data location
+4. Run all chunks or knit the document
+
+## 🔬 Research Background
+
+**Question**
+
 How do organic matter standing stocks, isotopic compositions, and C:N change across a mining-induced salinity gradient?
-Hypotheses
 
-CBOM and FBOM quantity would not differ across watersheds, but periphyton would increase along the SC gradient from salt subsidies (SO₄²⁻, Ca²⁺, HCO₃⁻).
-δ¹³C and δ¹⁵N would increase due to more metabolic and salt-tolerant microbial activity and/or different nutrient sources associated with mining activities.
-C:N would decrease across the SC gradient if auto- and heterotrophic microbial biofilms were subsidized by mining-associated salts.
+**Hypotheses**
 
-Abbreviations
-CodeMeaningOMOrganic matterCBOMCoarse benthic organic matterFBOMFine benthic organic matterALGAEPeriphyton (used in code)
-Analysis
+1. CBOM and FBOM quantity would not differ because all watersheds were predominantly forested with similar stream slopes, but periphyton would increase along the SC gradient from salt subsidies (SO₄²⁻, Ca²⁺, HCO₃⁻).
+2. δ¹³C and δ¹⁵N would increase due to more metabolic and salt-tolerant microbial activity and/or different nutrient sources associated with mining activities.
+3. C:N would decrease across the SC gradient if auto- and heterotrophic microbial biofilms were subsidized by mining-associated salts.
 
-Ash-free dry mass (g/m²) — linear mixed-effects model with fixed season
-Chlorophyll-a (g/m²) — linear mixed-effects model with fixed season
-δ¹³C (‰) — linear mixed-effects model with fixed season
-δ¹⁵N (‰) — linear mixed-effects model with fixed season
-C:N ratio — linear mixed-effects model with fixed season
-Summary statistics for all above variables plus % carbon and % nitrogen
+**Variables**
 
-Variables
-VariableUnitsCBOMFBOMPeriphytonAsh-free dry massg/m²✓✓✓Chlorophyll-ag/m²✓δ¹³C‰✓✓✓δ¹⁵N‰✓✓✓C:N ratio—✓✓✓Specific conductivityμS/cm
+| Variable | Units | CBOM | FBOM | Periphyton |
+|----------|-------|------|------|------------|
+| Ash-free dry mass | g/m² | ✓ | ✓ | ✓ |
+| Chlorophyll-a | g/m² | | | ✓ |
+| δ¹³C | ‰ | ✓ | ✓ | ✓ |
+| δ¹⁵N | ‰ | ✓ | ✓ | ✓ |
+| C:N ratio | — | ✓ | ✓ | ✓ |
+| Specific conductivity | μS/cm | | | |
+
+**Abbreviations**
+
+| Code | Meaning |
+|------|---------|
+| OM | Organic matter |
+| CBOM | Coarse benthic organic matter |
+| FBOM | Fine benthic organic matter |
+| ALGAE | Periphyton (used in code) |
+
+## 📚 Citation
+
+If you use this code in your research, please cite:
+
+Tabor L.M., Adey A.K., Brown T., Hotchkiss E.R., McLaughlin D., Meehan C., Reid R., Schoelholtz S., Sinning K., Underwood M.E., Zipper C., Entrekin S.A.
+
+## 📧 Contact
+
+For questions about this repository, please open an issue or contact the corresponding authors.
+
+## 📜 License
+
+Please use responsibly and cite appropriately.
+
+---
+
+**Happy analyzing!** 🌊📊🪨
