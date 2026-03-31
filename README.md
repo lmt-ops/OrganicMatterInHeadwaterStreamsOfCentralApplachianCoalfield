@@ -1,6 +1,4 @@
-Here's a clean GitHub README for this:
 
----
 
 ```markdown
 # Organic Matter Standing Stock Analysis
