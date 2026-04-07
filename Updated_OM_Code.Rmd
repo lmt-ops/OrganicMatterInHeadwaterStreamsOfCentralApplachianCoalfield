@@ -3,8 +3,8 @@ title: "AFDM vs Salinity GLMM - Clean, Publication-Ready"
 output: html_notebook
 ---
 
-## Data Analysis File for Organic Matter manuscript by Tabor et al.
-
+### Data Analysis File for Organic Matter manuscript by Tabor et al.
+## Periphyton is "algae" in-code
 # Modeling the organic matter - SC relationships
 
 1.  Load libraries
